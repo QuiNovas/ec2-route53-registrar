@@ -26,11 +26,17 @@ Required Permissions
 Environment Variables
 ---------------------
 **DNS_NAME_PREFIX** Optional
-  The prefix to put before the AWS assigned DNS
-  (public or private) name. For example, if the
+  The prefix to put before the name. For example, if the
   instance's public DNS is ``ec2-3-81-42-180.compute-1.amazonaws.com``
   , the zone is ``foo.bar.com`` and the prefix is ``my-prefix-``, then
   the resulting FQDN would be ``my-prefix-ec2-3-81-42-180.foo.bar.com``.
+  Defaults to the empty string.
+
+**DNS_NAME_SUFFIX** Optional
+  The suffix to put after the name. For example, if the
+  instance's public DNS is ``ec2-3-81-42-180.compute-1.amazonaws.com``
+  , the zone is ``foo.bar.com`` and the suffix is ``-my-suffix``, then
+  the resulting FQDN would be ``ec2-3-81-42-180-my-suffix.foo.bar.com``.
   Defaults to the empty string.
 
 **DNS_TTL** Optional
@@ -45,6 +51,12 @@ Environment Variables
 **HOSTED_ZONE_ID** Required
   The Route53 Hosted Zone ID for the zone to Registers
   ec2 instance records in.
+
+**MULTI_VALUE_ANSWER** Optional
+  If ``false``, the new label will be
+  ``DNS_NAME_PREFIX`` + ``ec2-dns-label`` + ``DNS_NAME_SUFFIX``.
+  If ``true``, the new label will be
+  ``DNS_NAME_PREFIX`` + ``DNS_NAME_SUFFIX``. Defaults to ``false``
 
 
 License: `APL2`_

@@ -3,13 +3,17 @@ import json
 import logging.config
 import re
 
+from distutils.util import strtobool
 from os import environ
 
 
 DNS_NAME_PREFIX = environ.get('DNS_NAME_PREFIX', '')
+DNS_NAME_SUFFIX = environ.get('DNS_NAME_SUFFIX', '')
 DNS_TTL = int(environ.get('DNS_TTL', '300'))
 EC2_INSTANCE_TAGS = json.loads(environ.get('EC2_INSTANCE_TAGS', '{}'))
 HOSTED_ZONE_ID = environ['HOSTED_ZONE_ID']
+MULTI_VALUE_ANSWER = bool(stringtobool(environ.get('MULTI_VALUE_ANSWER', 'false')))
+
 
 ROUTE53 = boto3.client('route53')
 EC2 = boto3.resource('ec2')
@@ -32,14 +36,18 @@ def handler(event, context):
       if _do_tags_match(instance):
         zone_name, private_zone = _get_hosted_zone_name_and_type()
         source_fqdn = instance.private_dns_name if private_zone else instance.public_dns_name
+        record_name = '{}{}.{}'.format(DNS_NAME_PREFIX, DNS_NAME_SUFFIX, zone_name) \
+          if MULTI_VALUE_ANSWER \
+            else '{}{}{}.{}'.format(DNS_NAME_PREFIX, source_fqdn[0 : source_fqdn.index('.')], DNS_NAME_SUFFIX, zone_name)
         ROUTE53.change_resource_record_sets(
           HostedZoneId=HOSTED_ZONE_ID,
           ChangeBatch={
             'Changes': [
               'Action': 'UPSERT' if state == 'running' else 'DELETE',
               'ResourceRecordSet': {
-                'Name': '{}{}.{}'.format(DNS_NAME_PREFIX, source_fqdn[0 : source_fqdn.index('.')], zone_name),
+                'Name': record_name,
                 'Type': 'A',
+                'MultiValueAnswer': MULTI_VALUE_ANSWER,
                 'TTL': DNS_TTL,
                 'ResourceRecords': [
                   {
