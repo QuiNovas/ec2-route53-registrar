@@ -3,7 +3,6 @@ import json
 import logging.config
 import re
 
-from distutils.util import strtobool
 from os import environ
 
 
@@ -12,7 +11,7 @@ DNS_NAME_SUFFIX = environ.get('DNS_NAME_SUFFIX', '')
 DNS_TTL = int(environ.get('DNS_TTL', '300'))
 EC2_INSTANCE_TAGS = json.loads(environ.get('EC2_INSTANCE_TAGS', '{}'))
 HOSTED_ZONE_ID = environ['HOSTED_ZONE_ID']
-MULTI_VALUE_ANSWER = bool(stringtobool(environ.get('MULTI_VALUE_ANSWER', 'false')))
+MULTI_VALUE_ANSWER = environ.get('MULTI_VALUE_ANSWER', 'false') == 'true'
 
 
 ROUTE53 = boto3.client('route53')
@@ -39,25 +38,49 @@ def handler(event, context):
         record_name = '{}{}.{}'.format(DNS_NAME_PREFIX, DNS_NAME_SUFFIX, zone_name) \
           if MULTI_VALUE_ANSWER \
             else '{}{}{}.{}'.format(DNS_NAME_PREFIX, source_fqdn[0 : source_fqdn.index('.')], DNS_NAME_SUFFIX, zone_name)
-        ROUTE53.change_resource_record_sets(
-          HostedZoneId=HOSTED_ZONE_ID,
-          ChangeBatch={
-            'Changes': [
-              'Action': 'UPSERT' if state == 'running' else 'DELETE',
-              'ResourceRecordSet': {
-                'Name': record_name,
-                'Type': 'A',
-                'MultiValueAnswer': MULTI_VALUE_ANSWER,
-                'TTL': DNS_TTL,
-                'ResourceRecords': [
-                  {
-                    'Value': instance.private_ip_address if private_zone else instance.public_ip_address
-                  }
-                ]
-              }
-            ]
+        if not MULTI_VALUE_ANSWER:
+          record_change = {
+            'Action': 'UPSERT' if state == 'running' else 'DELETE',
+            'ResourceRecordSet': {
+              'Name': record_name,
+              'Type': 'A',
+              'TTL': DNS_TTL,
+              'ResourceRecords': [
+                {
+                  'Value': instance.private_ip_address if private_zone else instance.public_ip_address
+                }
+              ]
+            }
           }
-        )
+        else:
+          record_change = {
+            'Action': 'UPSERT' if state == 'running' else 'DELETE',
+            'ResourceRecordSet': {
+              'Name': record_name,
+              'Type': 'A',
+              'SetIdentifier': instance.id,
+              'MultiValueAnswer': True,
+              'TTL': DNS_TTL,
+              'ResourceRecords': [
+                {
+                  'Value': instance.private_ip_address if private_zone else instance.public_ip_address
+                }
+              ]
+            }
+          }
+        try:
+          ROUTE53.change_resource_record_sets(
+            HostedZoneId=HOSTED_ZONE_ID,
+            ChangeBatch={
+              'Changes': [
+                record_change
+              ]
+            }
+          )
+        except ROUTE53.exceptions.InvalidChangeBatch as icb:
+          if state == 'running':
+            raise icb
+        logger.info('{} DNS entry {} for instance {}'.format('Upserted' if state == 'running' else 'Deleted', record_name, instance.id))
       else:
         logger.info('Tags {} do not match'.format(instance.tags))
   else:
@@ -67,18 +90,19 @@ def handler(event, context):
 
 def _do_tags_match(instance):
   tags = {}
-  for tag in instance['tags']:
+  for tag in instance.tags:
     tags[tag['Key']] = tag['Value']
-  for key, value in EC2_INSTANCE_TAGS:
+  for key, value in EC2_INSTANCE_TAGS.items():
     if key not in tags or not re.fullmatch(value, tags[key]):
       return False
   return True
 
 
 def _get_hosted_zone_name_and_type():
+  global HOSTED_ZONE_TUPLE
   if not HOSTED_ZONE_TUPLE:
     response = ROUTE53.get_hosted_zone(
-      ID=HOSTED_ZONE_ID
+      Id=HOSTED_ZONE_ID
     )
     HOSTED_ZONE_TUPLE = (response['HostedZone']['Name'], response['HostedZone']['Config']['PrivateZone'])
   return HOSTED_ZONE_TUPLE
