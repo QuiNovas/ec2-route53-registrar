@@ -30,7 +30,7 @@ def handler(event, context):
       and 'detail-type' in event \
         and event['detail-type'] == 'EC2 Instance State-change Notification':
     state = event['detail']['state']
-    if state != 'pending':
+    if state in ('running', 'shutting-down', 'stopping'):
       instance = EC2.Instance(event['detail']['instance-id'])
       if _do_tags_match(instance):
         zone_name, private_zone = _get_hosted_zone_name_and_type()
