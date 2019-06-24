@@ -11,7 +11,7 @@ DNS_NAME_SUFFIX = environ.get('DNS_NAME_SUFFIX', '')
 DNS_TTL = int(environ.get('DNS_TTL', '300'))
 EC2_INSTANCE_TAGS = json.loads(environ.get('EC2_INSTANCE_TAGS', '{}'))
 HOSTED_ZONE_ID = environ['HOSTED_ZONE_ID']
-MULTI_VALUE_ANSWER = environ.get('MULTI_VALUE_ANSWER', 'false') == 'true'
+MULTI_VALUE_ANSWER = environ.get('MULTI_VALUE_ANSWER', 'false') in ('1', 'true', 'True', 'yes', 'Yes')
 
 
 ROUTE53 = boto3.client('route53')
